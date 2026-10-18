@@ -1,7 +1,6 @@
 import { D, save, replan, replaceAll } from '../store.js';
 import { esc, toast } from '../ui.js';
 import { WEEKDAYS } from '../logic/dates.js';
-import { ankiAddURL } from '../logic/anki.js';
 import * as google from '../google.js';
 import { rerender } from '../bus.js';
 
@@ -40,7 +39,8 @@ export default {
         </div>
         <div class="field">Dias sem estudo</div>
         <div class="chips">${WEEKDAYS.map((w, i) => `<button class="chip ${s.offWeekdays.includes(i) ? 'on' : ''}" data-action="offday" data-w="${i}">${w}</button>`).join('')}</div>
-        <button class="btn small" data-action="replan">↻ Replanejar tudo a partir de hoje</button>
+        <label class="toggle"><input type="checkbox" ${s.autoReschedule !== false ? 'checked' : ''} data-change="set-bool" data-path="autoReschedule"> Reagendar sozinho o que eu não fizer</label>
+        <button class="btn small" data-action="replan">↻ Refazer o plano do zero (mantém o que já fiz e as datas 📌)</button>
       </div></section>
 
       <section class="panel"><div class="panel-head"><span>Google Agenda e backup</span>${connected ? '<span class="tag sage">conectado</span>' : ''}</div><div class="pad form">
@@ -68,15 +68,6 @@ export default {
           </label>`}
       </div></section>
 
-      <section class="panel"><div class="panel-head"><span>Anki (AnkiMobile)</span></div><div class="pad form">
-        ${input('Perfil do Anki (opcional)', 'anki.profile', 'placeholder="deixe vazio se só tem um"')}
-        ${input('Prefixo dos baralhos', 'anki.deckPrefix')}
-        <div class="row gap">${input('Tipo de nota básico', 'anki.basicType')}${input('Campo frente', 'anki.basicFront')}${input('Campo verso', 'anki.basicBack')}</div>
-        <div class="row gap">${input('Tipo omissão (cloze)', 'anki.clozeType')}${input('Campo texto', 'anki.clozeText')}${input('Campo extra', 'anki.clozeExtra')}</div>
-        <small class="muted">Os nomes precisam ser iguais aos do seu Anki (Anki → Tipos de nota). Em inglês costumam ser Basic/Front/Back e Cloze/Text/Back Extra.</small>
-        <button class="btn ghost small" data-action="anki-test">Enviar card de teste</button>
-      </div></section>
-
       <section class="panel"><div class="panel-head"><span>Horas complementares</span></div><div class="pad form">
         ${input('Horas exigidas no curso', 'requiredHours', 'type="number" inputmode="numeric" data-num')}
         <label class="field">Categorias (uma por linha)<textarea rows="5" data-change="cats">${esc(s.hourCategories.join('\n'))}</textarea></label>
@@ -102,7 +93,7 @@ export default {
       replan();
     },
     replan() {
-      replan();
+      replan({ fresh: true });
       toast('Plano refeito ✓');
     },
     'apply-dates'() {
@@ -152,9 +143,6 @@ export default {
       google.disconnect();
       calendars = null;
       rerender();
-    },
-    'anki-test'() {
-      location.href = ankiAddURL({ front: 'Teste do app Estudos UFF ✓', back: 'Se este card apareceu, está tudo certo. Pode apagar.', type: 'basic' }, D().settings.anki, { name: 'Teste' }, null);
     },
     export() {
       const a = document.createElement('a');

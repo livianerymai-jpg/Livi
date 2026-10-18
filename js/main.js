@@ -1,16 +1,17 @@
-import { load, onSave, onSaveError, flush, D } from './store.js';
-import { $, toast, closeSheet } from './ui.js';
+import { load, onSave, onSaveError, flush, D, replan } from './store.js';
+import { $, toast, closeSheet, enableSwipe } from './ui.js';
+import { planActions, planInputs, toggleTaskDone, postpone } from './views/common.js';
+import { today } from './logic/dates.js';
 import * as google from './google.js';
 import { setRerender } from './bus.js';
 import hoje from './views/hoje.js';
 import estudos from './views/estudos.js';
 import agenda from './views/agenda.js';
-import cards from './views/cards.js';
 import notas from './views/notas.js';
 import presenca from './views/presenca.js';
 import ajustes from './views/ajustes.js';
 
-const VIEWS = { hoje, estudos, agenda, cards, notas, presenca, ajustes };
+const VIEWS = { hoje, estudos, agenda, notas, presenca, ajustes };
 let current = { view: hoje, name: 'hoje', param: null };
 
 function parseHash() {
@@ -22,9 +23,16 @@ export function render() {
   current = parseHash();
   const { view, name, param } = current;
   const main = $('#view');
-  const scroll = main.dataset.route === location.hash ? window.scrollY : 0;
+  const sameRoute = main.dataset.route === location.hash;
+  const scroll = sameRoute ? window.scrollY : 0;
   main.dataset.route = location.hash;
   main.innerHTML = view.render(param);
+  if (!sameRoute) {
+    main.classList.remove('enter');
+    void main.offsetWidth;
+    main.classList.add('enter');
+  }
+  enableSwipe(main, { onRight: (id) => toggleTaskDone(id), onLeft: (id) => postpone(id) });
   const t = typeof view.title === 'function' ? view.title(param) : view.title;
   $('#title').innerHTML = t;
   document.querySelectorAll('.tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
@@ -39,6 +47,8 @@ function handler(kind, el) {
 }
 
 const GLOBAL = {
+  ...planActions,
+  ...planInputs,
   back: () => (current.param ? (location.hash = '#' + current.name) : history.length > 1 ? history.back() : (location.hash = '#hoje')),
   'close-sheet': () => closeSheet(),
   go: (el) => (location.hash = el.dataset.to),
@@ -111,6 +121,18 @@ function showInstallHint() {
   };
 }
 
+// Uma vez por dia: o que ficou para trás é reagendado sozinho
+function dailyReplan() {
+  const d = D();
+  if (d.settings.autoReschedule === false) return;
+  const late = d.tasks.some((t) => !t.done && t.date < today());
+  if (d.lastPlanDay !== today() || late) {
+    const n = d.tasks.filter((t) => !t.done && t.date < today()).length;
+    replan();
+    if (n) toast(`${n} tarefa(s) atrasada(s) reagendada(s) 🔁`);
+  }
+}
+
 async function boot() {
   navigator.storage?.persist?.();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -118,6 +140,7 @@ async function boot() {
   const cameBack = google.handleRedirect();
   window.addEventListener('hashchange', render);
   render();
+  dailyReplan();
   if (cameBack) toast('Google conectado! ✓');
   if (google.isConnected()) scheduleSync(300);
   onSaveError(() => toast('⚠️ Não consegui salvar neste aparelho. Feche e abra o app de novo; se continuar, veja se o Safari não está em navegação privada.'));
@@ -127,6 +150,7 @@ async function boot() {
     if (document.visibilityState === 'hidden') flush();
     if (document.visibilityState === 'visible') {
       render();
+      dailyReplan();
       if (google.isConnected() && Date.now() - (D().lastSync || 0) > 5 * 60000) scheduleSync(300);
     }
   });

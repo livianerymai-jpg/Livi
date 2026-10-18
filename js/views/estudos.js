@@ -1,10 +1,11 @@
 import { D, save, subject, subjectExams, replan, uid, newSubject, COLORS } from '../store.js';
 import { esc, sheet, toast, bar, chip } from '../ui.js';
-import { today, diffDays, fmt, addDays } from '../logic/dates.js';
-import { taskLabel, folgaDays } from '../logic/planner.js';
-import { taskRow, toggleTask, emptyState, KIND_ICON } from './common.js';
+import { today, diffDays, fmt, addDays, WEEKDAYS } from '../logic/dates.js';
+import { taskLabel, folgaDays, gapsOf, cumulative, SPACING_PRESETS, units } from '../logic/planner.js';
+import { taskRow, emptyState, KIND_ICON } from './common.js';
 
 const DIFF_TEXT = ['', 'Tranquila', 'Leve', 'Média', 'Difícil', 'Muito difícil'];
+export const EXAM_KINDS = ['Prova', 'Trabalho', 'Seminário', 'Prática', 'Outro'];
 
 function progress(subjectId) {
   const tasks = D().tasks.filter((t) => t.subjectId === subjectId);
@@ -21,7 +22,8 @@ function subjectCard(s) {
       ${chip(status[0], status[1])}
       <b>${esc(s.name)}</b>
       ${bar(p.pct, s.color)}
-      <small class="mono">${Math.round(p.pct)}% · ${next ? `PROVA EM ${diffDays(today(), next.date)} DIAS` : 'SEM PROVA MARCADA'}</small>
+      <small class="mono">${Math.round(p.pct)}% · ${next ? `${esc(next.kind.toUpperCase())} EM ${diffDays(today(), next.date)} DIAS` : 'NADA MARCADO'}</small>
+      ${s.studyWeekdays?.length ? `<small class="mono">ESTUDO: ${s.studyWeekdays.map((w) => WEEKDAYS[w].toUpperCase()).join(' · ')}</small>` : ''}
     </a>`;
 }
 
@@ -30,16 +32,15 @@ function schedule() {
   const t = today();
   const days = Array.from({ length: 14 }, (_, i) => addDays(t, i));
   const folga = folgaDays(d.exams.filter((e) => e.date >= t), d.settings.bufferDays);
-  const examsOn = (day) => d.exams.filter((e) => e.date === day);
   return days.map((day) => {
     const tasks = d.tasks.filter((x) => x.date === day);
-    const ex = examsOn(day);
+    const ex = d.exams.filter((e) => e.date === day);
     const f = folga.get(day);
     if (!tasks.length && !ex.length && !f) return '';
     return `
       <div class="day">
         <div class="day-head"><b>${day === t ? 'Hoje' : fmt(day, 'weekday')}</b>
-          ${ex.map((e) => chip(`📝 prova ${subject(e.subjectId)?.name || ''} ${e.title}`, 'wine')).join('')}
+          ${ex.map((e) => chip(`📝 ${e.kind} ${subject(e.subjectId)?.name || ''} ${e.title}`, 'wine')).join('')}
           ${f && !ex.length ? chip(`🛟 folga antes de ${subject(f.subjectId)?.name || ''}`, 'sage') : ''}
         </div>
         ${tasks.map((x) => taskRow(x)).join('')}
@@ -56,20 +57,25 @@ function examBlock(e, s) {
     <article class="card exam" id="exam-${e.id}">
       <div class="row between">
         <div>
-          <small class="mono">${past ? 'JÁ FOI' : days === 0 ? 'HOJE' : `EM ${days} DIAS`}${e.weight ? ' · PESO ' + esc(e.weight) : ''}${e.gcalId ? ' · 📅' : ''}</small>
+          <small class="mono">${esc(e.kind.toUpperCase())} · ${past ? 'JÁ FOI' : days === 0 ? 'HOJE' : `EM ${days} DIAS`}${e.weight ? ' · PESO ' + esc(e.weight) : ''}${e.points ? ` · ${esc(e.points)} PTS` : ''}${e.gcalId ? ' · 📅' : ''}</small>
           <h3>${esc(e.title)} <span class="muted">· ${fmt(e.date, 'weekday')}${e.time ? ' ' + e.time : ''}</span></h3>
         </div>
-        <button class="icon" data-action="edit-exam" data-id="${e.id}" aria-label="Editar prova">✎</button>
+        <button class="icon" data-action="edit-exam" data-id="${e.id}" aria-label="Editar">✎</button>
       </div>
-      ${e.dateMovedInGoogle ? '<p class="note">📅 A data foi alterada no Google Agenda. <button class="link" data-action="ack-move" data-id="' + e.id + '">Replanejar com a nova data</button></p>' : ''}
+      ${e.dateMovedInGoogle ? `<p class="note">📅 A data foi alterada no Google Agenda. <button class="link" data-action="ack-move" data-id="${e.id}">Replanejar com a nova data</button></p>` : ''}
+      ${(D().planWarnings || []).filter((w) => w.examId === e.id).map((w) => `<p class="note">⚠️ ${esc(w.msg)}</p>`).join('')}
+      ${(() => { const heavy = [...new Set(tasks.filter((t) => !t.done).map((t) => t.date))].filter((day) => (D().planWarnings || []).some((w) => w.type === 'sobrecarga' && w.date === day)); return heavy.length ? `<p class="note">⚠️ Dias cheios: ${heavy.map((x) => fmt(x)).join(', ')}. Libere mais dias da semana para esta matéria, aumente os blocos por dia em Ajustes ou mova revisões tocando no conteúdo.</p>` : ''; })()}
       ${tasks.length ? `<div class="row between mono small"><span>PLANO DE ESTUDO</span><span>${done}/${tasks.length}</span></div>${bar((done / tasks.length) * 100, s.color)}` : ''}
       <div class="contents">
-        ${e.contents.map((c) => {
-          const ts = tasks.filter((t) => t.contentId === c.id);
+        ${units(e).map((u) => {
+          const ts = tasks.filter((t) => t.contentId === u.id).sort((a, b) => a.date.localeCompare(b.date));
+          const titles = u.contentIds.map((id) => e.contents.find((c) => c.id === id)?.title);
           return `
           <div class="content">
-            <div class="row between"><b>${esc(c.title)}</b><button class="icon small" data-action="del-content" data-exam="${e.id}" data-id="${c.id}" aria-label="Remover">×</button></div>
-            <div class="steps">${ts.map((t) => `<button class="step ${t.done ? 'done' : ''} ${!t.done && t.date < today() ? 'late' : ''}" data-action="toggle-step" data-id="${t.id}" title="${taskLabel(t)}">${KIND_ICON[t.kind]} ${t.kind === 'estudo' ? 'Estudo' : t.kind === 'final' ? 'Final' : 'R' + t.n} · ${fmt(t.date)}</button>`).join('') || (past ? '' : '<small class="muted">sem tempo para revisões antes da prova</small>')}</div>
+            <button class="content-title" data-action="content-open" data-exam="${e.id}" data-id="${u.id}">
+              <b>${u.contentIds.length > 1 ? '🔗 ' : ''}${esc(titles.join(' + '))}</b><span class="chev">›</span>
+            </button>
+            <div class="steps">${ts.map((t) => `<button class="step ${t.done ? 'done' : ''} ${!t.done && t.date < today() ? 'late' : ''}" data-action="task-open" data-id="${t.id}" title="${taskLabel(t)}">${KIND_ICON[t.kind]} ${t.kind === 'estudo' ? 'Estudo' : t.kind === 'final' ? 'Final' : t.kind === 'extra' ? 'Extra' : 'R' + t.n} · ${fmt(t.date)}${t.pinned ? ' 📌' : ''}</button>`).join('') || (past ? '' : '<small class="muted">nada programado — toque no conteúdo para ajustar</small>')}</div>
           </div>`;
         }).join('')}
       </div>
@@ -81,17 +87,24 @@ function examBlock(e, s) {
     </article>`;
 }
 
-function examSheet(subjectId, e = null) {
+export function examSheet(subjectId, e = null, date = '') {
+  const s = subject(e?.subjectId || subjectId);
+  const modular = s?.grading.mode === 'modular';
   sheet(`
-    <h2>${e ? 'Editar prova' : 'Nova prova'}</h2>
-    <label class="field">Disciplina<select name="subjectId">${D().subjects.map((s) => `<option value="${s.id}" ${s.id === (e?.subjectId || subjectId) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
-    <label class="field">Nome<input name="title" required value="${esc(e?.title || '')}" placeholder="ex.: N1, P2, Prática"></label>
+    <h2>${e ? 'Editar avaliação' : 'Nova avaliação'}</h2>
+    <div class="seg wide kinds">${EXAM_KINDS.map((k) => `<label><input type="radio" name="kind" value="${k}" ${(e?.kind || 'Prova') === k ? 'checked' : ''}><span>${k}</span></label>`).join('')}</div>
+    <label class="field">Disciplina<select name="subjectId">${D().subjects.map((x) => `<option value="${x.id}" ${x.id === s?.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+    <label class="field">Nome<input name="title" required value="${esc(e?.title || '')}" placeholder="ex.: N1, P2, Seminário de histologia"></label>
     <div class="row gap">
-      <label class="field grow">Data<input type="date" name="date" required value="${e?.date || ''}"></label>
+      <label class="field grow">Data<input type="date" name="date" required value="${e?.date || date}"></label>
       <label class="field">Horário<input type="time" name="time" value="${e?.time || ''}"></label>
     </div>
-    <label class="field">Peso (opcional)<input name="weight" value="${esc(e?.weight || '')}" placeholder="ex.: 4"></label>
-    ${e ? '' : '<label class="field">Conteúdos (um por linha)<textarea name="contents" rows="5" placeholder="Membrana plasmática&#10;Organelas&#10;Citoesqueleto"></textarea></label>'}
+    <div class="row gap">
+      <label class="field grow">${modular ? 'Vale (pontos)' : 'Peso na média'}<input name="${modular ? 'points' : 'weight'}" inputmode="decimal" value="${esc((modular ? e?.points : e?.weight) || '')}" placeholder="${modular ? 'ex.: 40' : 'ex.: 1'}"></label>
+      ${modular ? `<label class="field grow">Módulo<select name="moduleId">${s.grading.modules.map((m) => `<option value="${m.id}" ${m.id === e?.moduleId ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>` : ''}
+    </div>
+    ${e ? '' : '<label class="field">Conteúdos (um por linha — opcional)<textarea name="contents" rows="5" placeholder="Membrana plasmática&#10;Organelas&#10;Citoesqueleto"></textarea></label>'}
+    <p class="muted small">A nota desta avaliação aparece sozinha na aba Notas.</p>
     <div class="row gap actions">
       ${e ? '<button class="btn danger" value="delete">Excluir</button>' : ''}
       <button class="btn ghost grow" type="button" data-action="close-sheet">Cancelar</button>
@@ -100,22 +113,25 @@ function examSheet(subjectId, e = null) {
     onSubmit(data, form, submitter) {
       const d = D();
       if (submitter?.value === 'delete') {
-        if (!confirm('Excluir esta prova e o plano de estudos dela?')) return true;
+        if (!confirm(`Excluir ${e.kind.toLowerCase()} ${e.title} e o plano dela? (a nota, se já lançada, fica guardada em Notas)`)) return true;
         d.exams = d.exams.filter((x) => x !== e);
         d.tasks = d.tasks.filter((t) => t.examId !== e.id);
-        d.cards.forEach((c) => { if (c.examId === e.id) c.examId = null; });
         if (e.gcalId) (d.deletedExamEvents ||= []).push(e.gcalId);
         replan();
         return;
       }
-      const target = e || { id: uid(), contents: [] };
-      Object.assign(target, { subjectId: data.subjectId, title: data.title.trim(), date: data.date, time: data.time, weight: data.weight.trim(), dirty: true, dateMovedInGoogle: false });
+      const target = e || { id: uid(), contents: [], removed: [] };
+      Object.assign(target, {
+        subjectId: data.subjectId, kind: data.kind || 'Prova', title: data.title.trim(), date: data.date, time: data.time,
+        weight: (data.weight ?? target.weight ?? '').trim(), points: (data.points ?? target.points ?? '').trim(), moduleId: data.moduleId || target.moduleId,
+        dirty: true, dateMovedInGoogle: false,
+      });
       if (!e) {
         target.contents = (data.contents || '').split('\n').map((x) => x.trim()).filter(Boolean).map((title) => ({ id: uid(), title }));
         d.exams.push(target);
       }
       replan();
-      toast(e ? 'Prova atualizada ✓' : target.contents.length ? 'Prova criada e plano gerado ✓' : 'Prova criada ✓');
+      toast(e ? 'Avaliação atualizada ✓' : target.contents.length ? 'Criada, plano gerado e nota adicionada em Notas ✓' : 'Criada e adicionada em Notas ✓');
     },
   });
 }
@@ -125,7 +141,7 @@ function subjectSheet(s = null) {
     <h2>${s ? 'Editar disciplina' : 'Nova disciplina'}</h2>
     <label class="field">Nome<input name="name" required value="${esc(s?.name || '')}" placeholder="ex.: Citologia"></label>
     <label class="field">Professor(a)<input name="professor" value="${esc(s?.professor || '')}"></label>
-    <div class="field">Cor<div class="colors">${COLORS.map((c, i) => `<label><input type="radio" name="color" value="${c}" ${(s?.color || COLORS[D().subjects.length % COLORS.length]) === c ? 'checked' : ''}><i style="background:${c}"></i></label>`).join('')}</div></div>
+    <div class="field">Cor<div class="colors">${COLORS.map((c) => `<label><input type="radio" name="color" value="${c}" ${(s?.color || COLORS[D().subjects.length % COLORS.length]) === c ? 'checked' : ''}><i style="background:${c}"></i></label>`).join('')}</div></div>
     <div class="row gap actions">
       ${s ? '<button class="btn danger" value="delete">Excluir</button>' : ''}
       <button class="btn ghost grow" type="button" data-action="close-sheet">Cancelar</button>
@@ -134,12 +150,11 @@ function subjectSheet(s = null) {
     onSubmit(data, form, submitter) {
       const d = D();
       if (submitter?.value === 'delete') {
-        if (!confirm(`Excluir ${s.name} com provas, plano, notas, presença e flashcards?`)) return true;
+        if (!confirm(`Excluir ${s.name} com avaliações, plano, notas e presença?`)) return true;
         for (const e of d.exams.filter((x) => x.subjectId === s.id)) if (e.gcalId) (d.deletedExamEvents ||= []).push(e.gcalId);
         d.subjects = d.subjects.filter((x) => x !== s);
         d.exams = d.exams.filter((x) => x.subjectId !== s.id);
         d.tasks = d.tasks.filter((x) => x.subjectId !== s.id);
-        d.cards = d.cards.filter((x) => x.subjectId !== s.id);
         location.hash = '#estudos';
         replan();
         return;
@@ -153,6 +168,23 @@ function subjectSheet(s = null) {
   });
 }
 
+function spacingPanel(s) {
+  const gaps = gapsOf(s);
+  const custom = !!s.gaps?.length;
+  const key = custom ? Object.entries(SPACING_PRESETS).find(([, p]) => p.gaps.join() === s.gaps.join())?.[0] || 'custom' : 'auto';
+  return `
+    <div class="field">Espaçamento entre as revisões</div>
+    <div class="chips">
+      <button class="chip ${key === 'auto' ? 'on' : ''}" data-action="spacing" data-id="${s.id}" data-k="auto">Automático</button>
+      ${Object.entries(SPACING_PRESETS).map(([k, p]) => `<button class="chip ${key === k ? 'on' : ''}" data-action="spacing" data-id="${s.id}" data-k="${k}">${p.label}</button>`).join('')}
+    </div>
+    <div class="gaps">
+      ${gaps.map((g, i) => `<label><small>${i === 0 ? 'estudo → R1' : `R${i} → R${i + 1}`}</small><span><input inputmode="numeric" value="${g}" data-change="gap" data-id="${s.id}" data-i="${i}"> dias</span></label>`).join('')}
+      <div class="gap-btns"><button class="icon small" data-action="gap-add" data-id="${s.id}" aria-label="Mais uma revisão">＋</button>${gaps.length > 1 ? `<button class="icon small" data-action="gap-del" data-id="${s.id}" aria-label="Uma revisão a menos">－</button>` : ''}</div>
+    </div>
+    <p class="muted small">Revisões em +${cumulative(gaps).join(', +')} dias depois do estudo${key === 'auto' ? ` (automático pela dificuldade ${s.difficulty})` : ''}. Se a matéria tem dia fixo, cai no dia de estudo mais próximo.</p>`;
+}
+
 export default {
   title: (id) => (id ? `<small class="kicker">Disciplina</small>${esc(subject(id)?.name || '')}` : 'Painel de <span class="script">disciplinas</span>'),
   render(id) {
@@ -164,22 +196,28 @@ export default {
       return `
         <section class="card" style="--c:${s.color}">
           <div class="row between">
-            <div><small class="muted">${s.professor ? 'Prof. ' + esc(s.professor) : 'Sem professor cadastrado'}</small></div>
+            <small class="muted">${s.professor ? 'Prof. ' + esc(s.professor) : 'Sem professor cadastrado'}</small>
             <button class="btn ghost small" data-action="edit-subject" data-id="${s.id}">Editar</button>
           </div>
           <div class="field">Dificuldade / prioridade no semestre</div>
           <div class="diff">${[1, 2, 3, 4, 5].map((n) => `<button class="${s.difficulty === n ? 'on' : ''}" data-action="set-diff" data-id="${s.id}" data-v="${n}"><b>${n}</b><small>${DIFF_TEXT[n]}</small></button>`).join('')}</div>
-          <p class="muted small">Quanto mais difícil, mais cedo o plano começa e mais revisões ela ganha (${s.difficulty >= 4 ? '4–5' : '2–3'} revisões por conteúdo).</p>
+          <p class="muted small">Mais difícil = começa antes${s.gaps?.length ? '' : ' e ganha mais revisões'}.</p>
+
+          <div class="field">Dias em que estudo esta matéria</div>
+          <div class="chips">${[1, 2, 3, 4, 5, 6, 0].map((w) => `<button class="chip ${s.studyWeekdays.includes(w) ? 'on' : ''}" data-action="study-day" data-id="${s.id}" data-w="${w}">${WEEKDAYS[w]}</button>`).join('')}</div>
+          <p class="muted small">${s.studyWeekdays.length ? `Estudos e revisões só caem ${s.studyWeekdays.map((w) => WEEKDAYS[w].toLowerCase()).join(', ')}.` : 'Sem dia fixo: o plano usa qualquer dia livre.'}</p>
+
+          ${spacingPanel(s)}
         </section>
-        <div class="row between section-head"><h2>Provas e conteúdos</h2><button class="btn small" data-action="new-exam" data-id="${s.id}">+ Prova</button></div>
-        ${exams.length ? exams.map((e) => examBlock(e, s)).join('') : emptyState('Nenhuma prova ainda', 'Adicione a prova com a data e a lista de conteúdos — o plano com revisões espaçadas é criado na hora.')}
+        <div class="row between section-head"><h2>Avaliações e conteúdos</h2><button class="btn small" data-action="new-exam" data-id="${s.id}">+ Avaliação</button></div>
+        ${exams.length ? exams.map((e) => examBlock(e, s)).join('') : emptyState('Nada cadastrado ainda', 'Adicione provas, trabalhos ou seminários com a data. Com a lista de conteúdos, o plano de revisões é criado na hora — e a nota já aparece na aba Notas.')}
         <details class="card how">
-          <summary>Como o plano é montado?</summary>
+          <summary>Como o plano funciona e o que dá para ajustar</summary>
           <ul>
-            <li><b>📖 Estudo</b> do conteúdo, depois <b>🔁 revisões</b> em intervalos crescentes (1, 3, 7, 14 dias) — o efeito de espaçamento é uma das técnicas com mais evidência para memória de longo prazo.</li>
+            <li><b>📖 Estudo</b> → <b>🔁 revisões</b> com o espaçamento que você escolheu → <b>🎯 revisão final</b> antes da <b>🛟 folga</b> (${d.settings.bufferDays} dia(s)).</li>
+            <li><b>Toque num conteúdo</b> para ver o plano dele: mudar datas 📌, desprogramar, adicionar revisão extra, associar com outro conteúdo (estudar junto) ou mover para outra avaliação.</li>
+            <li>Na aba Hoje: deslize → para concluir e ← para adiar. O que você não fizer é reagendado sozinho.</li>
             <li>Revisar = <b>tentar lembrar</b> (questões, flashcards, explicar em voz alta), não só reler.</li>
-            <li><b>🎯 Revisão final</b> pouco antes da folga, e <b>🛟 ${d.settings.bufferDays} dia(s) de folga</b> antes de cada prova sem conteúdo novo.</li>
-            <li>Respeita sua capacidade diária (${d.settings.dailyCapacity} blocos) e os dias sem estudo — ajuste em ⚙️ Ajustes.</li>
           </ul>
         </details>`;
     }
@@ -188,7 +226,7 @@ export default {
         <div class="panel-head"><span>Minhas disciplinas</span><button class="btn small" data-action="new-subject">+ Disciplina</button></div>
         ${d.subjects.length ? `<div class="subjects">${d.subjects.map(subjectCard).join('')}</div>` : '<p class="muted pad">Cadastre suas disciplinas do período para começar.</p>'}
       </section>
-      ${d.planWarnings?.some((w) => w.type === 'sobrecarga') ? '<p class="note">⚠️ Alguns dias passaram da sua capacidade diária. Aumente a capacidade em Ajustes ou adiante o início dos estudos.</p>' : ''}
+      ${d.planWarnings?.filter((w) => w.type !== 'apertado').slice(0, 2).map((w) => `<p class="note">⚠️ ${esc(w.msg)}</p>`).join('') || ''}
       <section class="panel">
         <div class="panel-head"><span>Cronograma · próximos 14 dias</span></div>
         ${schedule()}
@@ -204,8 +242,33 @@ export default {
     },
     'set-diff'(el) {
       subject(el.dataset.id).difficulty = Number(el.dataset.v);
-      replan();
+      replan({ fresh: true });
       toast('Prioridade atualizada e plano refeito ✓');
+    },
+    'study-day'(el) {
+      const s = subject(el.dataset.id);
+      const w = Number(el.dataset.w);
+      s.studyWeekdays = s.studyWeekdays.includes(w) ? s.studyWeekdays.filter((x) => x !== w) : [...s.studyWeekdays, w].sort();
+      replan({ fresh: true });
+      toast(s.studyWeekdays.length ? `${s.name} agora cai só em ${s.studyWeekdays.map((x) => WEEKDAYS[x].toLowerCase()).join(', ')} ✓` : 'Sem dia fixo ✓');
+    },
+    spacing(el) {
+      const s = subject(el.dataset.id);
+      s.gaps = el.dataset.k === 'auto' ? null : [...SPACING_PRESETS[el.dataset.k].gaps];
+      replan({ fresh: true });
+      toast('Espaçamento atualizado e revisões refeitas ✓');
+    },
+    'gap-add'(el) {
+      const s = subject(el.dataset.id);
+      const g = [...gapsOf(s)];
+      g.push(Math.max(g.at(-1) * 2, 1));
+      s.gaps = g;
+      replan({ fresh: true });
+    },
+    'gap-del'(el) {
+      const s = subject(el.dataset.id);
+      s.gaps = gapsOf(s).slice(0, -1);
+      replan({ fresh: true });
     },
     'add-contents'(el) {
       const e = D().exams.find((x) => x.id === el.dataset.id);
@@ -217,25 +280,19 @@ export default {
       replan();
       toast(`${lines.length} conteúdo(s) planejado(s) ✓`);
     },
-    'del-content'(el) {
-      const e = D().exams.find((x) => x.id === el.dataset.exam);
-      const c = e.contents.find((x) => x.id === el.dataset.id);
-      if (!confirm(`Remover "${c.title}" do plano?`)) return;
-      e.contents = e.contents.filter((x) => x !== c);
-      D().tasks = D().tasks.filter((t) => t.contentId !== c.id);
-      e.dirty = true;
-      replan();
-    },
-    'toggle-step'(el) {
-      const t = D().tasks.find((x) => x.id === el.dataset.id);
-      t.done = !t.done;
-      t.doneAt = t.done ? today() : null;
-      save();
-    },
     'ack-move'(el) {
       D().exams.find((x) => x.id === el.dataset.id).dateMovedInGoogle = false;
-      replan();
+      replan({ fresh: true });
     },
   },
-  inputs: { 'toggle-task': toggleTask },
+  inputs: {
+    gap(el) {
+      const s = subject(el.dataset.id);
+      const g = [...gapsOf(s)];
+      g[Number(el.dataset.i)] = Math.max(1, Math.round(Number(el.value) || 1));
+      s.gaps = g;
+      replan({ fresh: true });
+    },
+  },
 };
+

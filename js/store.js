@@ -1,6 +1,7 @@
 // Estado do app salvo no aparelho (IndexedDB) + arquivos (certificados).
 import { today, addDays } from './logic/dates.js';
-import { buildPlan } from './logic/planner.js';
+import { buildPlan, rootOf, nextAllowedDay } from './logic/planner.js';
+import { codeFor } from './logic/grades.js';
 
 const DB = 'estudos-uff';
 const LS_KEY = 'estudos-uff-state';
@@ -62,9 +63,9 @@ export function defaultState() {
       offWeekdays: [],
       passing: 6,
       requiredHours: 200,
+      autoReschedule: true,
       hourCategories: ['Eventos e congressos', 'Ligas acadêmicas', 'Pesquisa e extensão', 'Monitoria', 'Outros'],
       google: { clientId: '', calendarId: 'primary', calendarName: '', mode: 'popup', autoBackup: true },
-      anki: { profile: '', deckPrefix: 'UFF', basicType: 'Básico', basicFront: 'Frente', basicBack: 'Verso', clozeType: 'Omissão de Palavras', clozeText: 'Texto', clozeExtra: 'Verso Extra' },
     },
     subjects: [],
     exams: [],
@@ -85,7 +86,7 @@ function merge(base, saved) {
   const out = { ...base, ...saved };
   out.settings = { ...base.settings, ...(saved.settings || {}) };
   out.settings.google = { ...base.settings.google, ...(saved.settings?.google || {}) };
-  out.settings.anki = { ...base.settings.anki, ...(saved.settings?.anki || {}) };
+  migrate(out);
   return out;
 }
 
@@ -134,23 +135,177 @@ export async function replaceAll(data) {
   await writeNow();
 }
 
+// Atualiza dados de versões antigas do app
+function migrate(d) {
+  for (const s of d.subjects) {
+    s.studyWeekdays ??= [];
+    s.gaps ??= null;
+    s.grading.modules ??= [];
+    s.grading.scale ??= 10;
+    for (const c of s.grading.components) {
+      // espaços "Prova 1/Prova 2" criados automaticamente e ainda vazios podem ser reaproveitados pelas provas
+      if (c.auto === undefined) c.auto = !c.examId && /^P\d+$/.test(c.code) && /^Prova \d+$/.test(c.name) && (c.grade == null || c.grade === '');
+    }
+  }
+  for (const e of d.exams) {
+    e.kind ??= 'Prova';
+    e.removed ??= [];
+  }
+  for (const s of d.subjects) syncExamComponents(s, d);
+}
+
+// ---------- provas ⇄ notas: cada prova/trabalho cadastrado vira um espaço de nota
+export function allComponents(g) {
+  return g.mode === 'modular' ? g.modules.flatMap((m) => m.components) : g.components;
+}
+export function syncExamComponents(s, d = D()) {
+  const g = s.grading;
+  const exams = d.exams.filter((e) => e.subjectId === s.id);
+  const ids = new Set(exams.map((e) => e.id));
+  const used = new Set(allComponents(g).map((c) => c.code));
+  for (const e of exams) {
+    let c = allComponents(g).find((x) => x.examId === e.id);
+    if (!c) {
+      let list = g.components;
+      if (g.mode === 'modular') {
+        if (!g.modules.length) g.modules.push({ id: uid(), name: 'Módulo 1', weight: 1, components: [] });
+        list = (g.modules.find((m) => m.id === e.moduleId) || g.modules.at(-1)).components;
+      }
+      c = list.find((x) => x.auto && !x.examId);
+      if (c) c.examId = e.id;
+      else {
+        c = { id: uid(), code: codeFor(e.title, used), name: e.title, weight: 1, max: g.mode === 'modular' ? Number(e.points) || 10 : 10, grade: null, examId: e.id };
+        used.add(c.code);
+        list.push(c);
+      }
+    }
+    c.auto = false;
+    c.name = e.title;
+    if (e.weight !== '' && e.weight != null && Number.isFinite(Number(String(e.weight).replace(',', '.')))) c.weight = Number(String(e.weight).replace(',', '.'));
+    if (g.mode === 'modular' && e.points) c.max = Number(e.points) || c.max;
+    // prova mudou de módulo
+    if (g.mode === 'modular' && e.moduleId) {
+      const target = g.modules.find((m) => m.id === e.moduleId);
+      if (target && !target.components.includes(c)) {
+        for (const m of g.modules) m.components = m.components.filter((x) => x !== c);
+        target.components.push(c);
+      }
+    }
+  }
+  // provas apagadas: remove o espaço vazio; se já tinha nota, mantém sem vínculo
+  const keep = (c) => !c.examId || ids.has(c.examId) || (c.grade != null && c.grade !== '');
+  for (const c of allComponents(g)) if (c.examId && !ids.has(c.examId) && c.grade != null && c.grade !== '') delete c.examId;
+  if (g.mode === 'modular') for (const m of g.modules) m.components = m.components.filter(keep);
+  else g.components = g.components.filter(keep);
+}
+
 // atalhos
 export const D = () => state.data;
 export const subject = (id) => D().subjects.find((s) => s.id === id);
 export const exam = (id) => D().exams.find((e) => e.id === id);
 export const subjectExams = (id) => D().exams.filter((e) => e.subjectId === id).sort((a, b) => a.date.localeCompare(b.date));
+// título de uma tarefa: o conteúdo (ou os conteúdos associados) do bloco
 export function contentTitle(t) {
   const e = exam(t.examId);
-  return e?.contents.find((c) => c.id === t.contentId)?.title ?? '';
+  if (!e) return '';
+  const titles = e.contents.filter((c) => rootOf(e, c.id) === t.contentId).map((c) => c.title);
+  return titles.join(' + ') || '(conteúdo removido)';
 }
 
-export function replan() {
+export function replan({ fresh = false } = {}) {
   const d = D();
-  const { tasks, warnings } = buildPlan({ subjects: d.subjects, exams: d.exams, tasks: d.tasks, today: today(), settings: d.settings });
+  for (const s of d.subjects) syncExamComponents(s, d);
+  const { tasks, warnings } = buildPlan({ subjects: d.subjects, exams: d.exams, tasks: d.tasks, today: today(), settings: d.settings, fresh });
   d.tasks = tasks;
   d.planWarnings = warnings;
+  d.lastPlanDay = today();
   save();
   return warnings;
+}
+
+// ---------- ações nas tarefas do plano
+const task = (id) => D().tasks.find((t) => t.id === id);
+export function setTaskDone(id, done) {
+  const t = task(id);
+  if (!t) return;
+  t.done = done;
+  t.doneAt = done ? today() : null;
+  // as próximas revisões se ajustam à data real em que você fez
+  replan();
+}
+export function moveTask(id, date) {
+  const t = task(id);
+  if (!t) return;
+  Object.assign(t, { date, pinned: true, done: false, doneAt: null });
+  replan();
+}
+export function postponeTask(id) {
+  const t = task(id);
+  const next = nextAllowedDay(addDays(t.date < today() ? today() : t.date, 1), subject(t.subjectId), D().settings);
+  moveTask(id, next);
+  return next;
+}
+export function removeTask(id) {
+  const t = task(id);
+  if (!t) return;
+  const e = exam(t.examId);
+  if (t.kind === 'extra') D().tasks = D().tasks.filter((x) => x !== t);
+  else if (e && !e.removed.includes(id)) e.removed.push(id);
+  D().tasks = D().tasks.filter((x) => x.id !== id);
+  replan();
+}
+export function addExtraReview(examId, unitId, date) {
+  const e = exam(examId);
+  D().tasks.push({ id: `${unitId}:extra:${uid()}`, examId, subjectId: e.subjectId, contentId: unitId, kind: 'extra', n: 50, date, pinned: true, done: false });
+  replan();
+}
+// devolve o bloco ao planejamento automático (desfaz remoções e datas fixadas)
+export function restoreUnit(examId, unitId) {
+  const e = exam(examId);
+  e.removed = e.removed.filter((id) => !id.startsWith(unitId + ':'));
+  for (const t of D().tasks) if (t.contentId === unitId && !t.done) t.pinned = false;
+  D().tasks = D().tasks.filter((t) => !(t.contentId === unitId && !t.done && t.kind !== 'extra'));
+  replan();
+}
+export function restoreRemoved(examId, id) {
+  const e = exam(examId);
+  e.removed = e.removed.filter((x) => x !== id);
+  replan();
+}
+
+// ---------- conteúdos
+export function linkContent(examId, contentId, targetId) {
+  const e = exam(examId);
+  const c = e.contents.find((x) => x.id === contentId);
+  const root = targetId ? rootOf(e, targetId) : null;
+  if (root === contentId) return;
+  // quem estava associado a este conteúdo passa a seguir o novo líder
+  for (const x of e.contents) if (x.link === contentId) x.link = root || null;
+  c.link = root;
+  // tarefas antigas (não feitas) do conteúdo saem; o bloco do líder passa a incluí-lo
+  D().tasks = D().tasks.filter((t) => !(t.contentId === contentId && !t.done));
+  replan();
+}
+export function moveContent(fromExamId, contentId, toExamId) {
+  const a = exam(fromExamId);
+  const b = exam(toExamId);
+  const c = a.contents.find((x) => x.id === contentId);
+  for (const x of a.contents) if (x.link === contentId) x.link = null;
+  a.contents = a.contents.filter((x) => x !== c);
+  c.link = null;
+  b.contents.push(c);
+  a.dirty = b.dirty = true;
+  D().tasks = D().tasks.filter((t) => !(t.contentId === contentId && !t.done)).map((t) => (t.contentId === contentId ? { ...t, examId: b.id } : t));
+  replan();
+}
+export function deleteContent(examId, contentId) {
+  const e = exam(examId);
+  for (const x of e.contents) if (x.link === contentId) x.link = null;
+  e.contents = e.contents.filter((x) => x.id !== contentId);
+  e.removed = e.removed.filter((id) => !id.startsWith(contentId + ':'));
+  e.dirty = true;
+  D().tasks = D().tasks.filter((t) => t.contentId !== contentId);
+  replan();
 }
 
 export function newSubject(name) {
@@ -161,10 +316,9 @@ export function newSubject(name) {
     professor: '',
     color: COLORS[d.subjects.length % COLORS.length],
     difficulty: 3,
-    grading: { mode: 'ponderada', passing: d.settings.passing, formula: '', components: [
-      { id: uid(), code: 'P1', name: 'Prova 1', weight: 1, max: 10, grade: null },
-      { id: uid(), code: 'P2', name: 'Prova 2', weight: 1, max: 10, grade: null },
-    ] },
+    studyWeekdays: [],
+    gaps: null,
+    grading: { mode: 'ponderada', passing: d.settings.passing, formula: '', scale: 10, components: [], modules: [] },
     attendance: { totalHours: 60, minPct: 75, start: d.settings.semesterStart, end: d.settings.semesterEnd, schedule: [], records: {} },
   };
   d.subjects.push(s);

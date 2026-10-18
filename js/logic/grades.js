@@ -102,7 +102,9 @@ const isNum = (x) => x !== null && x !== undefined && x !== '' && Number.isFinit
 
 // Resultado: média atual, quanto falta e situação
 export function computeGrades(grading) {
+  if (grading.mode === 'modular') return computeModular(grading);
   const passing = Number(grading.passing ?? 6);
+  if (!grading.components.some((c) => c.code)) return { empty: true, passing, missing: [] };
   const comps = grading.components.filter((c) => c.code);
   const codes = new Set(comps.map((c) => c.code.toUpperCase()));
   let parsed;
@@ -148,9 +150,77 @@ export function computeGrades(grading) {
   return { current, passing, needed, status, missing };
 }
 
+// ---------- Sistema modular
+// Cada módulo tem avaliações que valem pontos (ex.: Cognitiva 40, Tutoria 30, Habilidades 30).
+// Nota do módulo = pontos obtidos / pontos possíveis × escala. Nota final = média (ponderada) dos módulos.
+// Opcional: nota mínima em cada módulo.
+export function computeModular(g) {
+  const scale = Number(g.scale) || 10;
+  const passing = Number(g.passing ?? (scale === 100 ? 60 : 6));
+  const minModule = isNum(g.minModule) ? Number(g.minModule) : null;
+  const modules = (g.modules || []).filter((m) => m.components?.length);
+  if (!modules.length) return { empty: true, passing, scale, modules: [] };
+  const mx = (c) => Number(c.max) || 10;
+  const modGrade = (m, x) => {
+    let got = 0;
+    let max = 0;
+    for (const c of m.components) {
+      max += mx(c);
+      got += isNum(c.grade) ? Math.min(Number(c.grade), mx(c)) : x * mx(c);
+    }
+    return max ? (got / max) * scale : 0;
+  };
+  const partial = (m) => {
+    const known = m.components.filter((c) => isNum(c.grade));
+    const max = known.reduce((s, c) => s + mx(c), 0);
+    return max ? (known.reduce((s, c) => s + Math.min(Number(c.grade), mx(c)), 0) / max) * scale : null;
+  };
+  const wsum = modules.reduce((s, m) => s + (Number(m.weight) || 1), 0);
+  const final = (x) => modules.reduce((s, m) => s + modGrade(m, x) * (Number(m.weight) || 1), 0) / wsum;
+  const ok = (x) => final(x) >= passing - 1e-9 && (minModule == null || modules.every((m) => modGrade(m, x) >= minModule - 1e-9));
+  const missing = modules.flatMap((m) => m.components).filter((c) => !isNum(c.grade));
+  const partials = modules.map((m) => ({ id: m.id, name: m.name, grade: partial(m), full: m.components.every((c) => isNum(c.grade)) ? modGrade(m, 0) : null }));
+  const known = partials.filter((p) => p.grade != null);
+  const current = known.length ? known.reduce((s, p) => s + p.grade, 0) / known.length : null;
+  const base = { passing, scale, minModule, modules: partials, current, missing };
+  if (!missing.length) {
+    const f = final(0);
+    return { ...base, final: f, status: ok(0) ? 'aprovada' : 'reprovada' };
+  }
+  if (ok(0)) return { ...base, needed: 0, fraction: 0, status: 'garantida' };
+  if (!ok(1)) return { ...base, needed: null, status: 'impossivel' };
+  let lo = 0;
+  let hi = 1;
+  for (let k = 0; k < 50; k++) {
+    const mid = (lo + hi) / 2;
+    if (ok(mid)) hi = mid;
+    else lo = mid;
+  }
+  const fraction = Math.ceil(hi * 1000 - 1e-6) / 1000;
+  const neededByComp = missing.map((c) => ({ id: c.id, name: c.name, max: mx(c), pts: Math.ceil(fraction * mx(c) * 10 - 1e-6) / 10 }));
+  const status = fraction <= 0.5 ? 'tranquilo' : fraction <= 0.75 ? 'atencao' : 'dificil';
+  return { ...base, fraction, needed: fraction * scale, neededByComp, status };
+}
+
+// Código curto para usar em fórmulas: "N1" → N1, "Trabalho de anatomia" → TDA
+export function codeFor(title, used = new Set()) {
+  const clean = String(title || 'A').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const compact = clean.replace(/[^A-Z0-9]/g, '');
+  let code = compact.length && compact.length <= 6 ? compact : clean.split(/[^A-Z0-9]+/).filter(Boolean).map((w) => (/^\d+$/.test(w) ? w : w[0])).join('') || 'A';
+  if (/^\d/.test(code)) code = 'A' + code;
+  let out = code;
+  for (let i = 2; used.has(out); i++) out = code + i;
+  return out;
+}
+
 export const GRADE_TEMPLATES = {
   duas: { label: '2 provas', mode: 'ponderada', components: [['P1', 'Prova 1', 1], ['P2', 'Prova 2', 1]] },
   tres: { label: '3 provas', mode: 'ponderada', components: [['P1', 'Prova 1', 1], ['P2', 'Prova 2', 1], ['P3', 'Prova 3', 1]] },
   trabalho: { label: '2 provas + trabalho', mode: 'ponderada', components: [['P1', 'Prova 1', 2], ['P2', 'Prova 2', 2], ['T', 'Trabalho', 1]] },
-  formula: { label: 'Fórmula própria', mode: 'formula', components: [['P1', 'Prova 1', 1], ['P2', 'Prova 2', 1], ['T', 'Trabalho', 1]], formula: '0,4*P1 + 0,4*P2 + 0,2*T' },
 };
+
+export const MODULAR_TEMPLATE = [
+  ['Avaliação cognitiva', 40],
+  ['Tutoria / desempenho', 30],
+  ['Habilidades / prática', 30],
+];

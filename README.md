@@ -4,11 +4,10 @@ App de estudos para iPhone (instalável pela Tela de Início, funciona offline),
 
 | Aba | O que faz |
 |---|---|
-| **Hoje** | Contagem regressiva das provas, tarefas de estudo do dia (checklist), aulas do dia para marcar presença, próximos eventos |
-| **Estudos** | Painel de disciplinas com progresso. Em cada disciplina: **dificuldade 1–5**, provas com data e **lista de conteúdos** → o app monta o **plano com revisões espaçadas** e **folga antes da prova** |
+| **Hoje** | Contagem regressiva, semana com as tarefas de cada dia, **deslize → para concluir e ← para adiar**, aulas do dia para marcar presença. O que ficar para trás é **reagendado sozinho** |
+| **Estudos** | Painel de disciplinas. Em cada uma: **dificuldade 1–5**, **dias da semana em que você estuda a matéria**, **espaçamento das revisões** e as avaliações (prova, trabalho, seminário…) com a **lista de conteúdos** → plano com **revisões espaçadas** e **folga antes da prova**. Tudo editável: mudar datas, desprogramar, revisão extra, **associar conteúdos** (estudar juntos), mover entre avaliações |
 | **Agenda** | Hub de eventos **sincronizado nos dois sentidos com o Google Agenda**, calendário de provas e **horas complementares** (com certificado) |
-| **Cards** | Flashcards que vão direto para o **AnkiMobile**, organizados por disciplina/prova, com a quantidade de cards novos por dia para terminar antes da prova |
-| **Notas** | Cada disciplina com seu **jeito de calcular** (pesos, nº de provas, trabalhos ou fórmula livre) e quanto falta para passar |
+| **Notas** | As avaliações cadastradas em Estudos **aparecem aqui sozinhas**. Cada disciplina com seu jeito de calcular: **com pesos**, **fórmula livre** ou **sistema modular** (módulos com avaliações em pontos, escala 0–10 ou 0–100, mínimo por módulo) |
 | **Presença** | Presença/falta por aula, limite de faltas pelo mínimo de **75%** |
 
 Seus dados ficam no iPhone e, se você conectar o Google, também num backup no seu Google Drive (pasta oculta do app).
@@ -62,21 +61,16 @@ Como funciona:
 - Por segurança, o Google pede para reconectar a cada ~1 hora de uso. É só tocar em **Conectar** (sem senha).
 - Se a janela de login não abrir no iPhone: **Ajustes → Modo de login → Redirecionar**.
 
-## 4. Anki (AnkiMobile)
+## 4. Como o plano de estudos é montado
 
-1. No AnkiMobile, veja os nomes dos seus tipos de nota (tela de **Adicionar → Tipo**). Em português costumam ser **Básico** (campos **Frente**/**Verso**). Em inglês: **Basic** (**Front**/**Back**) e **Cloze** (**Text**/**Back Extra**).
-2. Confira/ajuste em **Ajustes → Anki** e toque em **Enviar card de teste**: o AnkiMobile abre e salva o card.
-3. Na aba **Cards**: “Salvar e mandar pro Anki” envia na hora. Para vários, use **Enviar pendentes** no painel da prova: ele abre o Anki, você volta e toca em **Enviar próximo**.
-4. Cada prova mostra quantos **cards novos por dia** colocar no baralho e como montar um **baralho filtrado** para a revisão final na folga.
-
-## 5. Como o plano de estudos é montado
-
-- **Estudo** do conteúdo → **revisões** em intervalos crescentes (+1, +3, +7, +14 dias). É o *efeito de espaçamento*, uma das técnicas com mais evidência para memória de longo prazo (Ebbinghaus; Cepeda et al., 2006/2008).
+- **Estudo** do conteúdo → **revisões** em intervalos crescentes (padrão: 1, 2, 4 e 7 dias entre uma sessão e a próxima — você escolhe Curto, Padrão, Longo ou digita os seus). É o *efeito de espaçamento*, uma das técnicas com mais evidência para memória de longo prazo (Ebbinghaus; Cepeda et al., 2006/2008).
 - Revisar = **tentar lembrar** (questões, flashcards, explicar em voz alta), não só reler (*prática de recuperação*, Roediger & Karpicke, 2006).
 - A 1ª revisão fica no dia seguinte, depois de uma noite de sono (consolidação).
-- Matérias com dificuldade maior começam antes e ganham mais revisões (2 a 5 por conteúdo).
+- Matérias com dificuldade maior começam antes (e, no espaçamento automático, ganham mais revisões).
+- Se a matéria tem **dia fixo** (ex.: só terça), estudos e revisões caem só nesse dia.
+- Datas que você muda à mão ficam fixas (📌); revisões que você desprograma não voltam (a não ser que você restaure); conteúdos **associados** são estudados e revisados juntos.
 - Uma **revisão final** fica logo antes da **folga** (padrão: 2 dias livres antes de cada prova). Nos dias de folga de uma prova, as outras matérias ficam com metade da carga.
-- O plano respeita sua capacidade diária e os dias sem estudo. Se atrasar, toque em **Replanejar** na aba Hoje.
+- O plano respeita sua capacidade diária e os dias sem estudo. O que você não fizer é reagendado sozinho no dia seguinte (dá para desligar em Ajustes).
 
 ## Desenvolvimento
 
@@ -84,5 +78,5 @@ Sem build: HTML, CSS e JavaScript puro.
 
 ```sh
 npm start   # http://localhost:8080
-npm test    # testes do planejador, notas, presença e Anki
+npm test    # testes do planejador, notas e presença
 ```

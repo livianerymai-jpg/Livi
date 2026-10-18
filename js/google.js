@@ -148,7 +148,7 @@ function eventBody(ev) {
 function examBody(ex) {
   const s = getSubject(ex.subjectId);
   return {
-    summary: `📝 Prova: ${s?.name || ''} – ${ex.title}`,
+    summary: `📝 ${ex.kind || 'Prova'}: ${s?.name || ''} – ${ex.title}`,
     description: ex.contents?.length ? 'Conteúdos:\n' + ex.contents.map((c) => '• ' + c.title).join('\n') : '',
     ...timesToGoogle({ date: ex.date, startTime: ex.time || '' }),
     extendedProperties: { private: { liviType: 'prova', liviExamId: ex.id } },

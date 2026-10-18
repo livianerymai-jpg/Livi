@@ -3,6 +3,7 @@ import { esc, sheet, toast, bar, chip, ring, closeSheet } from '../ui.js';
 import { today, fmt, parse, iso, addDays, MONTHS, WEEKDAYS, pad } from '../logic/dates.js';
 import * as google from '../google.js';
 import { rerender } from '../bus.js';
+import { examSheet } from './estudos.js';
 import { dateBox, emptyState, examCountdown, upcomingExams, subjectOptions } from './common.js';
 
 let seg = 'calendario';
@@ -54,11 +55,11 @@ function calendar() {
     </section>
     <section class="panel">
       <div class="panel-head"><span>${fmt(selected, 'long')}</span></div>
-      ${dayExams.map((e) => `<a class="event-row" href="#estudos/${e.subjectId}">${dateBox(e.date)}<div><b>📝 Prova: ${esc(subject(e.subjectId)?.name || '')} – ${esc(e.title)}</b><small>${e.time || 'dia todo'}${e.contents.length ? ` · ${e.contents.length} conteúdos` : ''}</small></div></a>`).join('')}
+      ${dayExams.map((e) => `<a class="event-row" href="#estudos/${e.subjectId}">${dateBox(e.date)}<div><b>📝 ${esc(e.kind || 'Prova')}: ${esc(subject(e.subjectId)?.name || '')} – ${esc(e.title)}</b><small>${e.time || 'dia todo'}${e.contents.length ? ` · ${e.contents.length} conteúdos` : ''}</small></div></a>`).join('')}
       ${dayEvents.map(eventRow).join('')}
       ${dayTasks.length ? `<a class="event-row" href="#estudos"><div class="datebox">📖</div><div><b>${dayTasks.length} tarefa(s) de estudo</b><small>${dayTasks.filter((t) => t.done).length} feita(s)</small></div></a>` : ''}
       ${!dayExams.length && !dayEvents.length && !dayTasks.length ? '<p class="muted pad">Dia livre.</p>' : ''}
-      <div class="row gap pad"><button class="btn ghost grow small" data-action="new-event" data-d="${selected}">+ Evento</button><button class="btn ghost grow small" data-action="new-exam" data-d="${selected}">+ Prova</button></div>
+      <div class="row gap pad"><button class="btn ghost grow small" data-action="new-event" data-d="${selected}">+ Evento</button><button class="btn ghost grow small" data-action="new-exam" data-d="${selected}">+ Avaliação</button></div>
     </section>`;
 }
 
@@ -172,26 +173,6 @@ async function eventSheet(ev = null, date = today()) {
   });
 }
 
-function examSheetFromAgenda(date) {
-  const d = D();
-  if (!d.subjects.length) return toast('Cadastre uma disciplina em Estudos primeiro.');
-  sheet(`
-    <h2>Nova prova</h2>
-    <label class="field">Disciplina<select name="subjectId">${subjectOptions()}</select></label>
-    <label class="field">Nome<input name="title" required placeholder="ex.: N2"></label>
-    <div class="row gap"><label class="field grow">Data<input type="date" name="date" required value="${date}"></label><label class="field">Horário<input type="time" name="time"></label></div>
-    <label class="field">Conteúdos (um por linha)<textarea name="contents" rows="4"></textarea></label>
-    <div class="row gap actions"><button class="btn ghost grow" type="button" data-action="close-sheet">Cancelar</button><button class="btn grow">Salvar</button></div>`, {
-    async onSubmit(data) {
-      const { replan } = await import('../store.js');
-      d.exams.push({ id: uid(), subjectId: data.subjectId, title: data.title.trim(), date: data.date, time: data.time, weight: '', dirty: true,
-        contents: data.contents.split('\n').map((x) => x.trim()).filter(Boolean).map((title) => ({ id: uid(), title })) });
-      replan();
-      toast('Prova criada ✓');
-    },
-  });
-}
-
 export default {
   title: 'Hub de <span class="script">eventos</span>',
   render(id) {
@@ -218,7 +199,7 @@ export default {
     },
     'pick-day': (el) => { selected = el.dataset.d; rerender(); },
     'new-event': (el) => eventSheet(null, el.dataset.d || today()),
-    'new-exam': (el) => examSheetFromAgenda(el.dataset.d || today()),
+    'new-exam': (el) => (D().subjects.length ? examSheet(D().subjects[0].id, null, el.dataset.d || today()) : toast('Cadastre uma disciplina em Estudos primeiro.')),
     'edit-event': (el) => eventSheet(D().events.find((e) => e.id === el.dataset.id)),
     async 'open-cert'(el) {
       const blob = await files.get('cert-' + el.dataset.id);

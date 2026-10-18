@@ -1,10 +1,10 @@
 // Funciona offline: guarda o app no aparelho e atualiza em segundo plano.
-const CACHE = 'estudos-uff-v2';
+const CACHE = 'estudos-uff-v3';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/main.js', 'js/store.js', 'js/ui.js', 'js/bus.js', 'js/google.js', 'js/demo.js',
-  'js/logic/dates.js', 'js/logic/planner.js', 'js/logic/grades.js', 'js/logic/attendance.js', 'js/logic/anki.js',
-  'js/views/common.js', 'js/views/hoje.js', 'js/views/estudos.js', 'js/views/agenda.js', 'js/views/cards.js',
+  'js/logic/dates.js', 'js/logic/planner.js', 'js/logic/grades.js', 'js/logic/attendance.js',
+  'js/views/common.js', 'js/views/hoje.js', 'js/views/estudos.js', 'js/views/agenda.js',
   'js/views/notas.js', 'js/views/presenca.js', 'js/views/ajustes.js',
   'icons/logo.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
