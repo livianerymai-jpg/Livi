@@ -1,7 +1,8 @@
 {
+  "id": "./",
   "name": "Estudos UFF",
   "short_name": "Estudos UFF",
-  "description": "Plano de estudos com revisão espaçada, provas, eventos, flashcards, notas e presença.",
+  "description": "Plano de estudos com revisão espaçada, avaliações, eventos, notas e presença.",
   "lang": "pt-BR",
   "start_url": "./#hoje",
   "scope": "./",
@@ -10,8 +11,8 @@
   "background_color": "#efebe3",
   "theme_color": "#efebe3",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icons/uff/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/uff/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/uff/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

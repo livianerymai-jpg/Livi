@@ -3,6 +3,7 @@ import { esc, toast } from '../ui.js';
 import { WEEKDAYS } from '../logic/dates.js';
 import * as google from '../google.js';
 import { rerender } from '../bus.js';
+import { V } from '../variant.js';
 
 let calendars = null;
 
@@ -52,7 +53,7 @@ export default {
           </label>
           <div class="row gap wrap">
             ${calendars ? '' : '<button class="btn ghost small" data-action="load-cals">Escolher agenda</button>'}
-            <button class="btn ghost small" data-action="create-cal">+ Criar agenda “Faculdade UFF”</button>
+            <button class="btn ghost small" data-action="create-cal">+ Criar agenda “Faculdade ${V.sigla}”</button>
             <button class="btn small" data-action="sync">↻ Sincronizar agora</button>
           </div>
           <label class="toggle"><input type="checkbox" ${g.autoBackup ? 'checked' : ''} data-change="set-bool" data-path="google.autoBackup"> Backup automático no Google Drive</label>
@@ -83,7 +84,7 @@ export default {
           <button class="btn ghost small danger-text" data-action="wipe">Apagar tudo</button>
         </div>
       </div></section>
-      <p class="muted small center">Estudos UFF 💙</p>`;
+      <p class="muted small center">${V.app} 💙</p>`;
   },
   actions: {
     offday(el) {
@@ -114,14 +115,14 @@ export default {
       rerender();
     },
     async 'create-cal'() {
-      const c = await google.createCalendar('Faculdade UFF');
+      const c = await google.createCalendar('Faculdade ' + V.sigla);
       Object.assign(D().settings.google, { calendarId: c.id, calendarName: c.summary });
       D().exams.forEach((e) => { e.gcalId = null; e.dirty = true; });
       D().events.filter((e) => !e.gcalId).forEach((e) => (e.dirty = true));
       calendars = await google.listCalendars();
       save();
       await google.sync();
-      toast('Agenda “Faculdade UFF” criada e sincronizada ✓');
+      toast(`Agenda “Faculdade ${V.sigla}” criada e sincronizada ✓`);
     },
     async sync() {
       const n = await google.sync();
@@ -147,7 +148,7 @@ export default {
     export() {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([JSON.stringify(D(), null, 1)], { type: 'application/json' }));
-      a.download = `estudos-uff-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `${V.storage}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
     },
     async demo() {

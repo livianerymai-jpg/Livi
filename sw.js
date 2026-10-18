@@ -1,12 +1,15 @@
-// Funciona offline: guarda o app no aparelho e atualiza em segundo plano.
-const CACHE = 'estudos-uff-v3';
+// Funciona offline: guarda o app no aparelho; online, busca sempre a versão mais nova.
+// Atende as duas versões: / (UFF) e /ufvjm/ (UFVJM).
+const CACHE = 'estudos-v4';
 const ASSETS = [
-  './', 'index.html', 'styles.css', 'manifest.webmanifest',
-  'js/main.js', 'js/store.js', 'js/ui.js', 'js/bus.js', 'js/google.js', 'js/demo.js',
+  './', 'index.html', 'manifest.webmanifest', 'styles.css',
+  'ufvjm/', 'ufvjm/index.html', 'ufvjm/manifest.webmanifest',
+  'js/main.js', 'js/store.js', 'js/ui.js', 'js/bus.js', 'js/google.js', 'js/demo.js', 'js/variant.js',
   'js/logic/dates.js', 'js/logic/planner.js', 'js/logic/grades.js', 'js/logic/attendance.js',
   'js/views/common.js', 'js/views/hoje.js', 'js/views/estudos.js', 'js/views/agenda.js',
   'js/views/notas.js', 'js/views/presenca.js', 'js/views/ajustes.js',
-  'icons/logo.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
+  'icons/uff/icon-180.png', 'icons/uff/icon-192.png', 'icons/uff/icon-512.png', 'icons/uff/favicon.png',
+  'ufvjm/icons/icon-180.png', 'ufvjm/icons/icon-192.png', 'ufvjm/icons/icon-512.png', 'ufvjm/icons/favicon.png',
 ];
 
 self.addEventListener('install', (e) => {
@@ -22,8 +25,8 @@ self.addEventListener('fetch', (e) => {
   const sameOrigin = url.origin === location.origin;
   const isFont = url.host === 'fonts.googleapis.com' || url.host === 'fonts.gstatic.com';
   if (!sameOrigin && !isFont) return; // Google APIs sempre pela rede
-  const key = req.mode === 'navigate' ? './' : req;
-  // Fontes: cache primeiro. App: rede primeiro (sempre a versão mais nova), cache se estiver offline.
+  // páginas: guarda pelo caminho (sem ?…), assim / e /ufvjm/ não se misturam
+  const key = req.mode === 'navigate' ? url.origin + url.pathname.replace(/index\.html$/, '') : req;
   e.respondWith(caches.open(CACHE).then(async (cache) => {
     if (isFont) {
       const hit = await cache.match(req);
@@ -34,7 +37,7 @@ self.addEventListener('fetch', (e) => {
       if (res.ok || res.type === 'opaque') cache.put(key, res.clone());
       return res;
     } catch {
-      return (await cache.match(key, { ignoreSearch: req.mode === 'navigate' })) || Response.error();
+      return (await cache.match(key, { ignoreSearch: true })) || Response.error();
     }
   }));
 });

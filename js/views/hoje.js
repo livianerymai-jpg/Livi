@@ -1,5 +1,6 @@
 import { D, save, subject, replan } from '../store.js';
 import { rerender } from '../bus.js';
+import { V } from '../variant.js';
 import { esc, toast } from '../ui.js';
 import { today, weekday, fmt, addDays, parse, WEEKDAYS } from '../logic/dates.js';
 import { attendanceSummary } from '../logic/attendance.js';
@@ -30,7 +31,7 @@ function classesToday() {
 export default {
   title: () => {
     const name = D().settings.name;
-    return `<small class="kicker">${fmt(today(), 'long')}</small>Olá${name ? ', ' + esc(name) : ''}!`;
+    return `<span class="brand-row"><img class="brand" src="${V.logo}" alt="${V.sigla}"><span><small class="kicker">${fmt(today(), 'long')}</small>Olá${name ? ', ' + esc(name) : ''}!</span></span>`;
   },
   render() {
     const d = D();

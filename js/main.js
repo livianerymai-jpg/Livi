@@ -135,7 +135,7 @@ function dailyReplan() {
 
 async function boot() {
   navigator.storage?.persist?.();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register(new URL('../sw.js', import.meta.url)).catch(() => {});
   await load();
   const cameBack = google.handleRedirect();
   window.addEventListener('hashchange', render);

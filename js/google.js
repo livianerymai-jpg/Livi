@@ -2,11 +2,12 @@
 // Usa OAuth no próprio aparelho: nenhum servidor intermediário vê seus dados.
 import { D, save, exam as getExam, subject as getSubject, uid } from './store.js';
 import { addDays, iso, pad, today } from './logic/dates.js';
+import { V } from './variant.js';
 
 const SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.appdata';
 const API = 'https://www.googleapis.com/calendar/v3';
-const TOKEN_KEY = 'g-token';
-const BACKUP_NAME = 'estudos-uff-backup.json';
+const TOKEN_KEY = V.token;
+const BACKUP_NAME = V.storage + '-backup.json';
 
 let token = null;
 let expiresAt = 0;

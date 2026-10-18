@@ -418,3 +418,6 @@ dialog#sheet.closing::backdrop { animation: fade .18s reverse forwards; }
 table.comp input:disabled { opacity: .6; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+.brand-row { display: flex; align-items: center; gap: 12px; }
+.brand { width: 52px; height: 52px; border-radius: 13px; object-fit: contain; background: #fff; border: 1px solid var(--line); box-shadow: 0 4px 12px -8px #0006; }

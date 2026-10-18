@@ -3,8 +3,10 @@ import { today, addDays } from './logic/dates.js';
 import { buildPlan, rootOf, nextAllowedDay } from './logic/planner.js';
 import { codeFor } from './logic/grades.js';
 
-const DB = 'estudos-uff';
-const LS_KEY = 'estudos-uff-state';
+import { V } from './variant.js';
+
+const DB = V.storage;
+const LS_KEY = V.storage + '-state';
 let dbp;
 function open() {
   dbp ??= new Promise((res, rej) => {

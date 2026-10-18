@@ -1,4 +1,13 @@
-# Estudos UFF 💙
+# Estudos UFF / Estudos UFVJM 💙
+
+O mesmo app em duas versões, cada uma com seu ícone, nome e **dados separados**:
+
+| Versão | Link | Ícone na Tela de Início |
+|---|---|---|
+| **UFF** | https://livianerymai-jpg.github.io/Livi/ | brasão da UFF |
+| **UFVJM** | https://livianerymai-jpg.github.io/Livi/ufvjm/ | logo da UFVJM |
+
+Para instalar: abra o link da versão no **Safari** → Compartilhar → **Adicionar à Tela de Início**. Dá para ter as duas instaladas ao mesmo tempo.
 
 App de estudos para iPhone (instalável pela Tela de Início, funciona offline), com:
 
@@ -49,7 +58,7 @@ O Google exige que cada app tenha uma “chave” própria. É grátis.
    - Em **Público-alvo → Usuários de teste**, adicione **o seu e-mail**.
 4. **Clientes → Criar cliente** → tipo **Aplicativo da Web**:
    - **Origens JavaScript autorizadas**: `https://livianerymai-jpg.github.io`
-   - **URIs de redirecionamento autorizados**: `https://livianerymai-jpg.github.io/Livi/`
+   - **URIs de redirecionamento autorizados**: `https://livianerymai-jpg.github.io/Livi/` e `https://livianerymai-jpg.github.io/Livi/ufvjm/`
    - **Criar** e copie o **ID do cliente** (termina em `.apps.googleusercontent.com`).
 5. No app: **Ajustes → ID do cliente OAuth** → cole → **Conectar com o Google**.
    - Vai aparecer “O Google não verificou este app”: toque em **Continuar** (o app é seu).
@@ -74,7 +83,7 @@ Como funciona:
 
 ## Desenvolvimento
 
-Sem build: HTML, CSS e JavaScript puro.
+Sem build: HTML, CSS e JavaScript puro. A versão UFVJM (`ufvjm/`) usa o mesmo código; depois de mudar `index.html` ou `manifest.webmanifest`, rode `python3 tools/make-variants.py`.
 
 ```sh
 npm start   # http://localhost:8080

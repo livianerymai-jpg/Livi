@@ -3,6 +3,7 @@ import { esc, nf, num, chip, toast } from '../ui.js';
 import { computeGrades, formulaOf, GRADE_TEMPLATES, MODULAR_TEMPLATE, codeFor } from '../logic/grades.js';
 import { fmt } from '../logic/dates.js';
 import { emptyState } from './common.js';
+import { V } from '../variant.js';
 import { examSheet } from './estudos.js';
 
 const STATUS = {
@@ -103,7 +104,7 @@ function weightedView(s) {
           <p class="muted small">Use os códigos acima, + − * / e parênteses. Também: <code>max(N1; N2)</code>, <code>min(…)</code>, <code>media(…)</code>, <code>soma(…)</code>. Decimais com vírgula: <code>0,4*N1</code>.</p>`
           : `<p class="muted small">Fórmula: <code class="mono" id="formulaPreview">${esc(formulaOf(g))}</code></p>`}
         <label class="field">Média para aprovação<input inputmode="decimal" value="${showGrade(g.passing)}" data-input="passing"></label>
-        <p class="muted small">Na UFF a média de aprovação direta costuma ser 6,0 — confira no plano de ensino.</p>
+        <p class="muted small">${V.passingHint}</p>
       </div>
     </section>`;
 }
