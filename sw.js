@@ -1,5 +1,5 @@
 // Funciona offline: guarda o app no aparelho e atualiza em segundo plano.
-const CACHE = 'estudos-uff-v1';
+const CACHE = 'estudos-uff-v2';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/main.js', 'js/store.js', 'js/ui.js', 'js/bus.js', 'js/google.js', 'js/demo.js',
@@ -23,12 +23,18 @@ self.addEventListener('fetch', (e) => {
   const isFont = url.host === 'fonts.googleapis.com' || url.host === 'fonts.gstatic.com';
   if (!sameOrigin && !isFont) return; // Google APIs sempre pela rede
   const key = req.mode === 'navigate' ? './' : req;
+  // Fontes: cache primeiro. App: rede primeiro (sempre a versão mais nova), cache se estiver offline.
   e.respondWith(caches.open(CACHE).then(async (cache) => {
-    const cached = await cache.match(key, { ignoreSearch: req.mode === 'navigate' });
-    const net = fetch(req).then((res) => {
+    if (isFont) {
+      const hit = await cache.match(req);
+      if (hit) return hit;
+    }
+    try {
+      const res = await fetch(req, { cache: 'no-cache' });
       if (res.ok || res.type === 'opaque') cache.put(key, res.clone());
       return res;
-    }).catch(() => cached);
-    return cached || net;
+    } catch {
+      return (await cache.match(key, { ignoreSearch: req.mode === 'navigate' })) || Response.error();
+    }
   }));
 });

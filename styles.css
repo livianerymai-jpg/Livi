@@ -319,3 +319,7 @@ dialog#sheet::backdrop { background: #2a241c66; }
 }
 #toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
 #toast button { background: none; border: 0; color: #e9c46a; font-weight: 800; cursor: pointer; }
+
+#install { margin: 4px 14px 0; padding: 12px 14px; border-radius: 12px; background: #f6ebcd; border: 1px solid #ead7a4; font-size: 14px; max-width: 692px; }
+@media (min-width: 720px) { #install { margin: 4px auto 0; } }
+#install button { display: block; margin-top: 8px; background: var(--ink); color: #fff; border: 0; border-radius: 8px; padding: 7px 12px; font-weight: 700; }

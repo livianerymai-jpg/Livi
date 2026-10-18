@@ -3,6 +3,7 @@ import { today, addDays } from './logic/dates.js';
 import { buildPlan } from './logic/planner.js';
 
 const DB = 'estudos-uff';
+const LS_KEY = 'estudos-uff-state';
 let dbp;
 function open() {
   dbp ??= new Promise((res, rej) => {
@@ -11,19 +12,32 @@ function open() {
       r.result.createObjectStore('kv');
       r.result.createObjectStore('files');
     };
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
+    r.onsuccess = () => {
+      const db = r.result;
+      // O iOS às vezes derruba a conexão quando o app vai para o fundo: abre outra na próxima vez
+      db.onclose = () => (dbp = null);
+      db.onversionchange = () => { db.close(); dbp = null; };
+      res(db);
+    };
+    r.onerror = () => { dbp = null; rej(r.error); };
   });
   return dbp;
 }
-async function idb(store, mode, fn) {
-  const d = await open();
-  return new Promise((res, rej) => {
-    const t = d.transaction(store, mode);
-    const q = fn(t.objectStore(store));
-    t.oncomplete = () => res(q?.result);
-    t.onerror = () => rej(t.error);
-  });
+async function idb(store, mode, fn, retry = true) {
+  try {
+    const d = await open();
+    return await new Promise((res, rej) => {
+      const t = d.transaction(store, mode);
+      const q = fn(t.objectStore(store));
+      t.oncomplete = () => res(q?.result);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error || new Error('gravação cancelada'));
+    });
+  } catch (e) {
+    dbp = null; // conexão perdida (bug conhecido do Safari): reconecta e tenta de novo
+    if (retry) return idb(store, mode, fn, false);
+    throw e;
+  }
 }
 export const files = {
   get: (id) => idb('files', 'readonly', (s) => s.get(id)),
@@ -76,21 +90,48 @@ function merge(base, saved) {
 }
 
 export async function load() {
-  const saved = await idb('kv', 'readonly', (s) => s.get('state'));
+  // Duas cópias (IndexedDB + localStorage): usa a mais recente
+  let fromDb = null;
+  let fromLs = null;
+  try { fromDb = await idb('kv', 'readonly', (s) => s.get('state')); } catch (e) { console.error(e); }
+  try { fromLs = JSON.parse(localStorage.getItem(LS_KEY)); } catch {}
+  const saved = [fromDb, fromLs].filter(Boolean).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
   if (saved) state.data = merge(defaultState(), saved);
   return state.data;
 }
 
-let timer;
+let timer = null;
+const errorListeners = new Set();
+export const onSaveError = (fn) => errorListeners.add(fn);
+
+function writeNow() {
+  clearTimeout(timer);
+  timer = null;
+  const data = state.data;
+  let lsOk = false;
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    lsOk = true;
+  } catch (e) { console.error(e); }
+  return idb('kv', 'readwrite', (s) => s.put(data, 'state')).catch((e) => {
+    console.error(e);
+    if (!lsOk) errorListeners.forEach((fn) => fn(e));
+  });
+}
 export function save({ silent } = {}) {
   state.data.updatedAt = Date.now();
   clearTimeout(timer);
-  timer = setTimeout(() => idb('kv', 'readwrite', (s) => s.put(state.data, 'state')), 150);
+  timer = setTimeout(writeNow, 80);
   if (!silent) listeners.forEach((fn) => fn());
+}
+// grava na hora (ao sair do app)
+export function flush() {
+  if (timer) return writeNow();
 }
 export async function replaceAll(data) {
   state.data = merge(defaultState(), data);
-  await idb('kv', 'readwrite', (s) => s.put(state.data, 'state'));
+  state.data.updatedAt = Date.now();
+  await writeNow();
 }
 
 // atalhos

@@ -1,4 +1,4 @@
-import { load, onSave, D } from './store.js';
+import { load, onSave, onSaveError, flush, D } from './store.js';
 import { $, toast, closeSheet } from './ui.js';
 import * as google from './google.js';
 import { setRerender } from './bus.js';
@@ -96,6 +96,21 @@ onSave(() => {
 
 setRerender(() => render());
 
+// No iPhone, o Safari e o ícone da Tela de Início guardam dados separados
+function showInstallHint() {
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const el = $('#install');
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('install-hint') === 'no'; } catch {}
+  if (!ios || standalone || dismissed) return;
+  el.hidden = false;
+  el.querySelector('button').onclick = () => {
+    el.hidden = true;
+    try { localStorage.setItem('install-hint', 'no'); } catch {}
+  };
+}
+
 async function boot() {
   navigator.storage?.persist?.();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -105,7 +120,11 @@ async function boot() {
   render();
   if (cameBack) toast('Google conectado! ✓');
   if (google.isConnected()) scheduleSync(300);
+  onSaveError(() => toast('⚠️ Não consegui salvar neste aparelho. Feche e abra o app de novo; se continuar, veja se o Safari não está em navegação privada.'));
+  window.addEventListener('pagehide', flush);
+  showInstallHint();
   document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flush();
     if (document.visibilityState === 'visible') {
       render();
       if (google.isConnected() && Date.now() - (D().lastSync || 0) > 5 * 60000) scheduleSync(300);
